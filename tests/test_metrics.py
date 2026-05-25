@@ -17,6 +17,23 @@ class TestMetricsCollector:
         snapshot = self.metrics.snapshot()
         assert snapshot["gauges"]["memory.usage"] == 85.5
 
+    @pytest.mark.parametrize("value", [float("nan"), float("inf"), float("-inf")])
+    def test_gauge_rejects_non_finite_values(self, value):
+        with pytest.raises(ValueError, match="must be finite"):
+            self.metrics.gauge("memory.usage", value)
+
+        snapshot = self.metrics.snapshot()
+        assert "memory.usage" not in snapshot["gauges"]
+
+    def test_rejected_gauge_does_not_overwrite_existing_value(self):
+        self.metrics.gauge("memory.usage", 85.5)
+
+        with pytest.raises(ValueError, match="must be finite"):
+            self.metrics.gauge("memory.usage", float("nan"))
+
+        snapshot = self.metrics.snapshot()
+        assert snapshot["gauges"]["memory.usage"] == 85.5
+
     def test_observe(self):
         self.metrics.observe("response.time", 0.5)
         self.metrics.observe("response.time", 1.5)
@@ -69,7 +86,7 @@ class TestMetricsCollector:
 
 # 2021-10-14T18:38:30 update
 
-# 2021-11-04T15:10:57 update
+# 2021-11-04T15:00:57 update
 
 # 2021-11-11T12:24:53 update
 
