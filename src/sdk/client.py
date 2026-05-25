@@ -1,17 +1,45 @@
 """Orchestrator API client SDK."""
 
 import json
+import math
 import os
-from typing import Any, Dict, List, Optional
+from typing import Dict, Optional
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError
 
 
 class OrchestratorClient:
-    def __init__(self, base_url: str = None, api_key: str = None):
-        self.base_url = base_url or os.getenv("AO_API_URL", "https://api.agent-orchestrator.io")
+    DEFAULT_TIMEOUT = 30.0
+
+    def __init__(
+        self,
+        base_url: str = None,
+        api_key: str = None,
+        timeout: Optional[float] = None,
+    ):
+        self.base_url = base_url or os.getenv(
+            "AO_API_URL",
+            "https://api.agent-orchestrator.io",
+        )
         self.api_key = api_key or os.getenv("AO_API_KEY", "")
+        self.timeout = self._resolve_timeout(timeout)
         self._session = None
+
+    def _resolve_timeout(self, timeout: Optional[float]) -> float:
+        value = timeout
+        if value is None:
+            value = os.getenv("AO_REQUEST_TIMEOUT", self.DEFAULT_TIMEOUT)
+
+        try:
+            timeout_seconds = float(value)
+        except (TypeError, ValueError) as exc:
+            message = "timeout must be a finite positive number"
+            raise ValueError(message) from exc
+
+        if not math.isfinite(timeout_seconds) or timeout_seconds <= 0:
+            raise ValueError("timeout must be a finite positive number")
+
+        return timeout_seconds
 
     def _request(self, method: str, path: str, data: Dict = None) -> Dict:
         url = f"{self.base_url}/api/v2{path}"
@@ -23,12 +51,17 @@ class OrchestratorClient:
         req = Request(url, data=body, headers=headers, method=method)
 
         try:
-            with urlopen(req) as resp:
+            with urlopen(req, timeout=self.timeout) as resp:
                 return json.loads(resp.read().decode())
         except HTTPError as e:
             return {"error": e.code, "message": e.reason}
 
-    def register_agent(self, name: str, agent_type: str, config: Dict = None) -> Dict:
+    def register_agent(
+        self,
+        name: str,
+        agent_type: str,
+        config: Dict = None,
+    ) -> Dict:
         return self._request("POST", "/agents", {
             "name": name,
             "agent_type": agent_type,
